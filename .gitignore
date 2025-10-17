@@ -1,0 +1,11 @@
+*.log
+test_integration/
+test_lansat/
+*.tiff
+*.tif
+*.npy
+*.out
+*.err
+.claude/
+data/
+src/tessera_preprocessing/__pycache__
