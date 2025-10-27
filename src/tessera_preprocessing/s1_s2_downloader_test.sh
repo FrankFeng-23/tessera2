@@ -14,8 +14,8 @@ set -u
 # === Basic Configuration ===
 YEAR=2024 # Range [2017-2024]
 
-INPUT_TIFF="/scratch/zf281/tessera2/data/borneo/geoinfo/borneo_10m.tif"
-OUT_DIR="/scratch/zf281/tessera2/data/borneo/output"
+INPUT_TIFF="/scratch/zf281/tessera2/data/uk_tile_test/geoinfo/grid_0.45_50.85.tiff"
+OUT_DIR="/scratch/zf281/tessera2/data/uk_tile_test/output"
 OUT_DIR="${OUT_DIR}/${YEAR}"
 
 export TEMP_DIR="/scratch/zf281/global_d_pixel_generation/tmp_data"     # Temporary file directory
@@ -29,7 +29,9 @@ PYTHON_ENV="/maps/zf281/miniconda3/envs/detectree-env/bin/python"
 PARALLEL_PROCESSING=false          # Enable parallel S1/S2/Landsat processing (default: false for sequential)
 
 # === Sentinel-1, Sentinel-2 & Landsat Processing Configuration ===
-RESOLUTION=10.0  # Resolution of the input TIFF, also the output resolution (meters)
+RESOLUTION=10.0  # Resolution of the input TIFF, also the default output resolution (meters)
+
+# LANDSAT_RESOLUTION=30.0  # Landsat output resolution (meters)
 
 # === Sentinel-1 Configuration (UNCHANGED - Original Logic) ===
 S1_ENABLED=false                    # Enable S1 processing
@@ -75,8 +77,8 @@ LOG_INTERVAL=10                    # Progress update interval (seconds)
 #######################################
 # Internal Variables (Be Careful to Modify)
 #######################################
-START_TIME="${YEAR}-01-01"
-END_TIME="${YEAR}-02-01" # only for debugging
+START_TIME="${YEAR}-06-01"
+END_TIME="${YEAR}-07-01" # only for debugging
 
 SCRIPT_START_TIME=$(date +%s)
 SCRIPT_NAME=$(basename "$0")

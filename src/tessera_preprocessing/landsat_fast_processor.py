@@ -47,6 +47,7 @@ LANDSAT_BAND_MAPPING = {
     "nir08": "nir",        # NIR (845-885nm)
     "swir16": "swir16",    # SWIR1 (1560-1660nm)
     "swir22": "swir22",    # SWIR2 (2100-2300nm)
+    "lwir11": "lwir11",    # LWIR (10.9 μm)
     "qa_pixel": "qa"       # Quality Assessment
 }
 
@@ -496,12 +497,16 @@ def process_qa(qa_arr, roi_mask, partition_id="unknown"):
     roi_mask = roi_mask.astype(bool)
     roi_height, roi_width = roi_mask.shape
     
-    # After interpolation, QA data should exactly match ROI shape
-    # If shapes still don't match, this indicates an interpolation or pipeline error
+    # Handle shape mismatch by cropping to common (smaller) area, aligning with S1 logic
     if qa_height != roi_height or qa_width != roi_width:
-        logging.error(f"[{partition_id}] CRITICAL: After interpolation, QA shape{(qa_height, qa_width)} still differs from ROI shape{(roi_height, roi_width)}")
-        logging.error(f"[{partition_id}] This indicates an error in the interpolation pipeline - QA data should be exactly 10m resolution matching ROI")
-        raise ValueError(f"QA data shape {(qa_height, qa_width)} doesn't match ROI shape {(roi_height, roi_width)} after interpolation")
+        logging.warning(f"[{partition_id}] Detected shape mismatch: QA shape{(qa_height, qa_width)} differs from ROI shape{(roi_height, roi_width)}")
+        use_height = min(qa_height, roi_height)
+        use_width = min(qa_width, roi_width)
+        logging.info(f"[{partition_id}] Using common area: {use_height}x{use_width}")
+        # Crop QA and ROI to the common area
+        qa_arr = qa_arr[:, :use_height, :use_width]
+        roi_mask = roi_mask[:use_height, :use_width]
+        qa_height, qa_width = use_height, use_width
     
     logging.debug(f"[{partition_id}] QA and ROI shapes match perfectly: {(qa_height, qa_width)}")
     
@@ -780,11 +785,22 @@ def process_band(items, band_name, date_key, tpl, bbox_proj, mask_np, tile_selec
             if tile_selection is not None:
                 arr = smart_mosaic(band_arr, tile_selection, mask_np, partition_id)
             else:
-                # If no valid tile_selection, use first available tile
+                # If no valid tile_selection, use first available tile with shape-safe masking
                 logging.warning(f"[{partition_id}]     No valid tile_selection, using first tile")
-                arr = band_arr[0] if band_arr.shape[0] > 0 else np.zeros(mask_np.shape, dtype=band_arr.dtype)
-                # Apply mask - vectorized operation
-                arr = arr * mask_np
+                if band_arr.shape[0] > 0:
+                    candidate = band_arr[0]
+                else:
+                    candidate = np.zeros(mask_np.shape, dtype=band_arr.dtype)
+                # Shape-safe mask application (crop to common area)
+                if candidate.shape != mask_np.shape:
+                    logging.warning(f"[{partition_id}]     Data shape {candidate.shape} does not match ROI shape {mask_np.shape}, adjusting")
+                    arr_full = np.zeros((tpl["height"], tpl["width"]), dtype=candidate.dtype)
+                    h = min(candidate.shape[0], tpl["height"])
+                    w = min(candidate.shape[1], tpl["width"])
+                    arr_full[:h, :w] = candidate[:h, :w] * mask_np[:h, :w]
+                    arr = arr_full
+                else:
+                    arr = candidate * mask_np
         else:
             # Single item case
             band_arr = band_da.values
@@ -798,11 +814,16 @@ def process_band(items, band_name, date_key, tpl, bbox_proj, mask_np, tile_selec
                 logging.warning(f"[{partition_id}]     {band_name} array too large, skipping")
                 return False
             
-            # Data is already at target resolution and should match ROI shape
-            arr = band_arr
-            
-            # Apply mask - vectorized operation
-            arr = arr * mask_np
+            # Data is already at target resolution; apply shape-safe mask
+            if band_arr.shape != mask_np.shape:
+                logging.warning(f"[{partition_id}]     Data shape {band_arr.shape} does not match ROI shape {mask_np.shape}, adjusting")
+                arr_full = np.zeros((tpl["height"], tpl["width"]), dtype=band_arr.dtype)
+                h = min(band_arr.shape[0], tpl["height"])
+                w = min(band_arr.shape[1], tpl["width"])
+                arr_full[:h, :w] = band_arr[:h, :w] * mask_np[:h, :w]
+                arr = arr_full
+            else:
+                arr = band_arr * mask_np
         
         # Create metadata
         metadata = {
